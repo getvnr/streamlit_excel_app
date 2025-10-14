@@ -2,13 +2,14 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 
-st.title("Excel Server Update with Highlighted Matches")
+st.title("Excel Server Update: Highlight Non-FQDN Servers and Chart by Solution")
 
 uploaded_file = st.file_uploader("Upload Excel file", type=["xlsx", "xls"])
 
 if uploaded_file:
     try:
         xls = pd.ExcelFile(uploaded_file)
+
         if 'Sheet1' not in xls.sheet_names or 'Results' not in xls.sheet_names:
             st.error("Excel must contain 'Sheet1' and 'Results' sheets")
         else:
@@ -16,68 +17,59 @@ if uploaded_file:
             sheet1 = pd.read_excel(xls, sheet_name='Sheet1')
             results = pd.read_excel(xls, sheet_name='Results')
 
-            # Automatically detect columns
-            sheet1_key_col = sheet1.columns[0]
-            sheet1_value_col = sheet1.columns[1]
-            results_key_col = results.columns[0]
+            # Detect key columns
+            sheet1_key_col = sheet1.columns[0]  # Server/host
+            sheet1_value_col = sheet1.columns[1]  # Change number
+            results_key_col = results.columns[0]  # Server/host
+            solution_col = "Solution Name"  # Replace with your actual column name if different
 
-            st.write("Sheet1 Server Column:", sheet1_key_col)
-            st.write("Sheet1 Change Number Column:", sheet1_value_col)
-            st.write("Results Server Column:", results_key_col)
+            # Optional normalization for matching
+            sheet1['normalized'] = sheet1[sheet1_key_col]
+            results['normalized'] = results[results_key_col]
 
-            # OPTIONAL: normalize servers
-            normalize = st.checkbox("Normalize server names (strip .next.loc)", value=False)
-            if normalize:
-                sheet1['normalized'] = sheet1[sheet1_key_col].str.replace(r'\.next\.loc$', '', regex=True)
-                results['normalized'] = results[results_key_col].str.replace(r'\.next\.loc$', '', regex=True)
-                key_col_merge = 'normalized'
-            else:
-                sheet1['normalized'] = sheet1[sheet1_key_col]
-                results['normalized'] = results[results_key_col]
-                key_col_merge = 'normalized'
-
-            # Merge only matched servers (left join can expand multiple changes)
+            # Merge Results with Sheet1 to get UpdatedValue
             updated_results = results.merge(
-                sheet1[[key_col_merge, sheet1_value_col]],
-                left_on=key_col_merge,
-                right_on=key_col_merge,
-                how='inner'
-            )
+                sheet1[['normalized', sheet1_value_col]],
+                left_on='normalized',
+                right_on='normalized',
+                how='left'
+            ).rename(columns={sheet1_value_col: "UpdatedValue"})
 
-            # Rename change number column to UpdatedValue
-            updated_results = updated_results.rename(columns={sheet1_value_col: "UpdatedValue"})
+            # Fill unmatched
+            updated_results['UpdatedValue'] = updated_results['UpdatedValue'].fillna("Not Found")
 
-            # Show metrics
-            st.metric("Number of matched servers", updated_results.shape[0])
-
-            st.subheader("Matched Results")
+            st.subheader("Results with UpdatedValue")
             st.dataframe(updated_results)
 
-            # Prepare Excel for download with highlights
+            # Count number of servers per Solution Name
+            if solution_col in updated_results.columns:
+                server_count = updated_results.groupby(solution_col)[results_key_col].nunique()
+                st.subheader("Server Count per Solution Name")
+                st.bar_chart(server_count)
+
+            # Prepare Excel with highlighted non-FQDN servers
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                # Write original Sheet1
+                updated_results.to_excel(writer, sheet_name='Results', index=False)
                 sheet1.to_excel(writer, sheet_name='Sheet1', index=False)
 
-                # Write Results with formatting
-                updated_results.to_excel(writer, sheet_name='MatchedResults', index=False)
-                
                 workbook = writer.book
-                worksheet = writer.sheets['MatchedResults']
+                worksheet = writer.sheets['Results']
 
-                # Create yellow format
+                # Yellow format for non-FQDN servers
                 yellow_format = workbook.add_format({'bg_color': '#FFFF00'})
 
-                # Highlight 'UpdatedValue' column in yellow
-                col_idx = updated_results.columns.get_loc('UpdatedValue')
-                for row_num in range(1, updated_results.shape[0]+1):
-                    worksheet.write(row_num, col_idx, updated_results.iloc[row_num-1, col_idx], yellow_format)
+                # Highlight only rows where server does NOT contain '.'
+                for row_num, server in enumerate(updated_results[results_key_col], start=1):
+                    if '.' not in str(server):  # simple check for non-FQDN
+                        col_idx = updated_results.columns.get_loc(results_key_col)
+                        worksheet.write(row_num, col_idx, server, yellow_format)
 
             output.seek(0)
             st.download_button(
-                label="Download Matched Excel",
+                label="Download Excel with Highlights",
                 data=output,
-                file_name="matched_servers.xlsx",
+                file_name="highlighted_servers.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 

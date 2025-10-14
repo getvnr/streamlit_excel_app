@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 from io import BytesIO
 
-st.title("Excel Sheet Comparison: Update Change Numbers")
+st.title("Excel Sheet Comparison: Separate Rows per Change Number")
 
 # Upload Excel file
 uploaded_file = st.file_uploader("Upload Excel file", type=["xlsx", "xls"])
@@ -18,30 +18,35 @@ if uploaded_file:
             sheet1 = pd.read_excel(xls, sheet_name='Sheet1')
             results = pd.read_excel(xls, sheet_name='Results')
 
-            # Automatically use first two columns from Sheet1
+            # Detect columns automatically
             sheet1_key_col = sheet1.columns[0]  # Server/host
             sheet1_value_col = sheet1.columns[1]  # Change number
             results_key_col = results.columns[0]  # Server/host
 
-            # Show detected columns
             st.write("Sheet1 Server Column:", sheet1_key_col)
             st.write("Sheet1 Change Number Column:", sheet1_value_col)
             st.write("Results Server Column:", results_key_col)
 
-            # Update 'UpdatedValue' in Results
-            results['UpdatedValue'] = results[results_key_col].map(
-                sheet1.set_index(sheet1_key_col)[sheet1_value_col]
+            # Merge Results with Sheet1 to expand rows per change number
+            updated_results = results.merge(
+                sheet1,
+                left_on=results_key_col,
+                right_on=sheet1_key_col,
+                how='left'
             )
 
-            # Replace unmatched with 'Not Found'
-            results['UpdatedValue'] = results['UpdatedValue'].fillna("Not Found")
+            # Rename change number column to UpdatedValue
+            updated_results = updated_results.rename(columns={sheet1_value_col: "UpdatedValue"})
 
-            # Show number of updates
-            num_updated = (results['UpdatedValue'] != "Not Found").sum()
-            total_servers = results.shape[0]
+            # Fill unmatched servers
+            updated_results['UpdatedValue'] = updated_results['UpdatedValue'].fillna("Not Found")
+
+            # Show metrics
+            num_updated = (updated_results['UpdatedValue'] != "Not Found").sum()
+            total_servers = updated_results.shape[0]
 
             st.metric("Number of servers updated", num_updated)
-            st.metric("Total servers", total_servers)
+            st.metric("Total rows after expansion", total_servers)
 
             # Chart: Updated vs Not Found
             st.subheader("Update Summary")
@@ -49,15 +54,15 @@ if uploaded_file:
                 "Count": [num_updated, total_servers - num_updated]
             }, index=["Updated", "Not Found"]))
 
-            # Show updated Results
+            # Show updated dataframe
             st.subheader("Results with Updated Change Numbers")
-            st.dataframe(results)
+            st.dataframe(updated_results)
 
             # Provide download button
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 sheet1.to_excel(writer, sheet_name='Sheet1', index=False)
-                results.to_excel(writer, sheet_name='Results', index=False)
+                updated_results.to_excel(writer, sheet_name='Results', index=False)
             output.seek(0)
 
             st.download_button(

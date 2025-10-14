@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
 from io import BytesIO
-import matplotlib.pyplot as plt
 
-st.title("Excel Sheet Comparison and Update with Analytics")
+st.title("Excel Sheet Comparison: Update Change Numbers")
 
 # Upload Excel file
 uploaded_file = st.file_uploader("Upload Excel file", type=["xlsx", "xls"])
@@ -19,39 +18,42 @@ if uploaded_file:
             sheet1 = pd.read_excel(xls, sheet_name='Sheet1')
             results = pd.read_excel(xls, sheet_name='Results')
 
-            # Detect columns
-            sheet1_key_col = sheet1.columns[0]
-            sheet1_value_col = sheet1.columns[1]
-            results_key_col = results.columns[0]
+            # Automatically use first two columns from Sheet1
+            sheet1_key_col = sheet1.columns[0]  # Server/host
+            sheet1_value_col = sheet1.columns[1]  # Change number
+            results_key_col = results.columns[0]  # Server/host
 
-            st.write(f"Matching Sheet1 column: {sheet1_key_col}")
-            st.write(f"Value Sheet1 column: {sheet1_value_col}")
-            st.write(f"Results matching column: {results_key_col}")
+            # Show detected columns
+            st.write("Sheet1 Server Column:", sheet1_key_col)
+            st.write("Sheet1 Change Number Column:", sheet1_value_col)
+            st.write("Results Server Column:", results_key_col)
 
-            # Update 'UpdatedValue' column
+            # Update 'UpdatedValue' in Results
             results['UpdatedValue'] = results[results_key_col].map(
                 sheet1.set_index(sheet1_key_col)[sheet1_value_col]
             )
 
-            # Count number of changes
-            num_changes = results['UpdatedValue'].notna().sum()
-            total_rows = results.shape[0]
-            st.metric("Number of updates", num_changes)
-            st.metric("Total rows / servers", total_rows)
+            # Replace unmatched with 'Not Found'
+            results['UpdatedValue'] = results['UpdatedValue'].fillna("Not Found")
 
-            # Display updated dataframe
-            st.subheader("Updated Results Sheet")
+            # Show number of updates
+            num_updated = (results['UpdatedValue'] != "Not Found").sum()
+            total_servers = results.shape[0]
+
+            st.metric("Number of servers updated", num_updated)
+            st.metric("Total servers", total_servers)
+
+            # Chart: Updated vs Not Found
+            st.subheader("Update Summary")
+            st.bar_chart(pd.DataFrame({
+                "Count": [num_updated, total_servers - num_updated]
+            }, index=["Updated", "Not Found"]))
+
+            # Show updated Results
+            st.subheader("Results with Updated Change Numbers")
             st.dataframe(results)
 
-            # Chart: Number of changes vs unchanged
-            fig, ax = plt.subplots()
-            counts = [num_changes, total_rows - num_changes]
-            ax.bar(["Updated", "Unchanged"], counts, color=["green", "red"])
-            ax.set_ylabel("Number of rows")
-            ax.set_title("Changes Summary")
-            st.pyplot(fig)
-
-            # Provide download
+            # Provide download button
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 sheet1.to_excel(writer, sheet_name='Sheet1', index=False)

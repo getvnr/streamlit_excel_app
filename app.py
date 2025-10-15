@@ -3,20 +3,57 @@ import pandas as pd
 from io import BytesIO
 import plotly.express as px
 
-st.set_page_config(page_title="Server Update Dashboard", layout="wide")
-st.title("📘 Excel Server Update Dashboard")
+# ========== PAGE CONFIG ==========
+st.set_page_config(page_title="Automation Dashboard", layout="wide")
 
+# ========== BACKGROUND / LOGO ==========
+def set_bg_image(image_url):
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{
+            background-image: url("{image_url}");
+            background-attachment: fixed;
+            background-size: cover;
+            background-position: center;
+            color: #FFFFFF;
+        }}
+        .stMetric {{
+            background-color: rgba(0,0,0,0.5);
+            border-radius: 10px;
+            padding: 10px;
+        }}
+        .block-container {{
+            background: rgba(0, 0, 0, 0.6);
+            padding: 2rem;
+            border-radius: 15px;
+        }}
+        h1, h2, h3, h4, h5, h6, p {{
+            color: #FFFFFF !important;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
+# You can use any automation/tech-themed background image here:
+set_bg_image("https://cdn.pixabay.com/photo/2017/06/14/03/00/gear-2402781_1280.jpg")
+
+# ========== TITLE ==========
+st.markdown("<h1 style='text-align:center; color:#00FFFF;'>🤖 Automation Server Update Dashboard</h1>", unsafe_allow_html=True)
+st.markdown("<p style='text-align:center;'>Monitor, Match & Automate Server Updates</p>", unsafe_allow_html=True)
+
+# ========== FILE UPLOAD ==========
 uploaded_file = st.file_uploader("📤 Upload Excel File", type=["xlsx", "xls"])
 
 if uploaded_file:
     try:
         xls = pd.ExcelFile(uploaded_file)
 
-        # Validation
+        # Validate sheets
         if 'Sheet1' not in xls.sheet_names or 'Results' not in xls.sheet_names:
-            st.error("❌ Excel must contain 'Sheet1' and 'Results' sheets.")
+            st.error("❌ Excel must contain both 'Sheet1' and 'Results' sheets.")
         else:
-            # Read sheets
             sheet1 = pd.read_excel(xls, sheet_name='Sheet1')
             results = pd.read_excel(xls, sheet_name='Results')
 
@@ -26,11 +63,11 @@ if uploaded_file:
             results_key_col = results.columns[0]
             solution_col = "Solution Name"  # Adjust if needed
 
-            # Normalize names
+            # Normalize
             sheet1['normalized'] = sheet1[sheet1_key_col].astype(str).str.strip().str.lower()
             results['normalized'] = results[results_key_col].astype(str).str.strip().str.lower()
 
-            # Merge and map change number
+            # Merge
             updated_results = results.merge(
                 sheet1[['normalized', sheet1_value_col]],
                 on='normalized',
@@ -41,12 +78,13 @@ if uploaded_file:
             matched_servers = updated_results[updated_results['UpdatedValue'] != "Not Found"]
             unmatched_servers = updated_results[updated_results['UpdatedValue'] == "Not Found"]
 
-            # --- Summary counts ---
+            # Summary Counts
             total_servers = results[results_key_col].nunique()
             matched_count = matched_servers[results_key_col].nunique()
             unmatched_count = unmatched_servers[results_key_col].nunique()
 
-            # Summary cards
+            st.markdown("### 📊 System Summary")
+
             c1, c2, c3 = st.columns(3)
             c1.metric("🖥️ Total Servers", total_servers)
             c2.metric("✅ Matched Servers", matched_count)
@@ -54,15 +92,14 @@ if uploaded_file:
 
             st.markdown("---")
 
+            # Matched Table
             st.subheader("📋 Matched Servers with Change Numbers")
             st.dataframe(matched_servers, use_container_width=True)
 
-            # --- Charts Section ---
-            st.markdown("### 📊 Server Distribution Overview")
-
+            st.markdown("### 📈 Automation Insights")
             col1, col2 = st.columns(2)
 
-            # Chart 1: Solution Name vs Count (horizontal)
+            # Chart 1: Solution Name vs Server Count
             with col1:
                 if solution_col in matched_servers.columns:
                     sol_count = matched_servers.groupby(solution_col)[results_key_col].nunique().sort_values(ascending=True)
@@ -72,13 +109,21 @@ if uploaded_file:
                         y=sol_count.index,
                         orientation='h',
                         title="Server Count per Solution Name",
-                        labels={'x': 'Number of Servers', 'y': 'Solution Name'},
-                        text=sol_count.values
+                        text=sol_count.values,
+                        color=sol_count.values,
+                        color_continuous_scale='tealgrn'
+                    )
+                    fig1.update_layout(
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        font=dict(color='white'),
+                        title_font=dict(size=16, color='#00FFFF'),
+                        margin=dict(l=20, r=20, t=50, b=20)
                     )
                     fig1.update_traces(textposition='outside')
                     st.plotly_chart(fig1, use_container_width=True)
 
-            # Chart 2: Change Number vs Count (horizontal)
+            # Chart 2: Change Number vs Server Count
             with col2:
                 chg_count = matched_servers.groupby("UpdatedValue")[results_key_col].nunique().sort_values(ascending=True)
                 fig2 = px.bar(
@@ -87,19 +132,27 @@ if uploaded_file:
                     y=chg_count.index,
                     orientation='h',
                     title="Server Count per Change Number",
-                    labels={'x': 'Number of Servers', 'y': 'Change Number'},
-                    text=chg_count.values
+                    text=chg_count.values,
+                    color=chg_count.values,
+                    color_continuous_scale='viridis'
+                )
+                fig2.update_layout(
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)',
+                    font=dict(color='white'),
+                    title_font=dict(size=16, color='#00FFFF'),
+                    margin=dict(l=20, r=20, t=50, b=20)
                 )
                 fig2.update_traces(textposition='outside')
                 st.plotly_chart(fig2, use_container_width=True)
 
             st.markdown("---")
 
-            # --- Unmatched Section ---
+            # Unmatched Section
             with st.expander("🔍 View Unmatched Servers"):
                 st.dataframe(unmatched_servers[[results_key_col, "UpdatedValue"]], use_container_width=True)
 
-            # --- Excel with highlights ---
+            # Excel Download
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 updated_results.to_excel(writer, sheet_name='Results', index=False)
@@ -109,7 +162,6 @@ if uploaded_file:
                 worksheet = writer.sheets['Results']
                 yellow_format = workbook.add_format({'bg_color': '#FFFF00'})
 
-                # Highlight non-FQDN servers
                 for row_num, server in enumerate(updated_results[results_key_col], start=1):
                     if '.' not in str(server):
                         col_idx = updated_results.columns.get_loc(results_key_col)

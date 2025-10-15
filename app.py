@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 from io import BytesIO
 
-st.set_page_config(page_title="Excel Server Update Dashboard", layout="wide")
+st.set_page_config(page_title="Excel Server Update", layout="wide")
 st.title("Excel Server Update — Match & Highlight Servers")
 
 # --- File uploader ---
@@ -17,7 +17,7 @@ if uploaded_file:
         if 'Sheet1' not in xls.sheet_names or 'Results' not in xls.sheet_names:
             st.error("Excel must contain 'Sheet1' and 'Results' sheets.")
         else:
-            # --- Read Sheet1 WITHOUT header ---
+            # Read Sheet1 without header
             sheet1 = pd.read_excel(xls, sheet_name='Sheet1', header=None)
             results = pd.read_excel(xls, sheet_name='Results')
 
@@ -28,24 +28,27 @@ if uploaded_file:
             # Clean Results column names
             results.columns = results.columns.str.strip().str.replace('\n', ' ')
 
-            # Inspect columns
-            st.write("Columns in Results sheet:", results.columns.tolist())
+            # Optional columns
+            optional_cols = ["Start Date", "End Date", "Solution Name", "SolutionName", "Solution"]
+            existing_cols = {col: col for col in optional_cols if col in results.columns}
 
-            results_key_col = results.columns[0]  # first column assumed as server/host
+            # Convert dates safely
+            for date_col in ["Start Date", "End Date"]:
+                if date_col in existing_cols:
+                    results[date_col] = pd.to_datetime(results[date_col], errors='coerce')
+                else:
+                    st.info(f"Column '{date_col}' not found. Skipping date conversion.")
 
-            # Optional Solution column
-            solution_col = next((c for c in ["Solution Name", "SolutionName", "Solution"] if c in results.columns), None)
+            # Determine solution column
+            solution_col = next((col for col in ["Solution Name", "SolutionName", "Solution"] if col in results.columns), None)
 
-            # Optional Start Date column
-            start_date_col = next((c for c in ["Start Date", "StartDate"] if c in results.columns), None)
-            if start_date_col:
-                results[start_date_col] = pd.to_datetime(results[start_date_col], errors='coerce')
+            results_key_col = results.columns[0]  # assume first column is server
 
             # Normalize for merge
             sheet1['normalized'] = sheet1['Server'].astype(str).str.strip().str.lower()
             results['normalized'] = results[results_key_col].astype(str).str.strip().str.lower()
 
-            # Merge to get UpdatedValue
+            # Merge
             updated_results = results.merge(
                 sheet1[['normalized', 'ChangeNumber']],
                 on='normalized',
@@ -76,14 +79,14 @@ if uploaded_file:
             st.subheader("Visualizations")
             colA, colB = st.columns(2)
 
-            # Solution Name vs Server Count
+            # Solution Name chart
             if solution_col:
                 sol_count = matched_servers.groupby(solution_col)[results_key_col].nunique().reset_index()
                 sol_count = sol_count.rename(columns={results_key_col: "Server Count"})
                 fig1 = px.bar(sol_count, x="Server Count", y=solution_col, orientation='h', title="Server Count per Solution Name")
                 colA.plotly_chart(fig1, use_container_width=True)
 
-            # Change Number vs Server Count
+            # Change Number chart
             chg_count = matched_servers.groupby("UpdatedValue")[results_key_col].nunique().reset_index()
             chg_count = chg_count.rename(columns={results_key_col: "Server Count"})
             fig2 = px.bar(chg_count, x="Server Count", y="UpdatedValue", orientation='h', title="Server Count per Change Number")

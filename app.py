@@ -40,6 +40,16 @@ if uploaded_file:
             # Filter matched only
             matched_servers = updated_results[updated_results['UpdatedValue'] != "Not Found"]
 
+            # --- Summary counts ---
+            total_servers = results[results_key_col].nunique()
+            matched_count = matched_servers[results_key_col].nunique()
+
+            st.markdown(f"""
+            ### 📊 Summary
+            - **Total Servers in Results:** {total_servers}
+            - **Matched Servers with Change Number:** {matched_count}
+            """)
+
             st.subheader("Matched Servers with UpdatedValue")
             st.dataframe(matched_servers)
 

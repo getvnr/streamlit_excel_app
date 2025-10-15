@@ -8,7 +8,7 @@ from io import BytesIO
 # =========================================================
 st.set_page_config(page_title="Excel Server Update Dashboard", layout="wide")
 st.title("📊 Excel Server Update — Match, Highlight & Visualize")
-st.markdown("Upload your Excel file containing **Sheet1** and **Results** sheets to begin analysis.")
+st.markdown("Upload an Excel file containing **Sheet1** and **Results** to begin analysis.")
 
 # =========================================================
 # 📂 File Upload Section
@@ -41,9 +41,21 @@ if uploaded_file:
             results_key_col = results.columns[0]
             solution_col = "Solution Name" if "Solution Name" in results.columns else results.columns[1]
 
-            # Normalize text for matching
-            sheet1['normalized'] = sheet1['Server'].astype(str).str.strip().str.lower()
-            results['normalized'] = results[results_key_col].astype(str).str.strip().str.lower()
+            # =========================================================
+            # 🧹 Normalize Hostnames for Matching
+            # =========================================================
+            def normalize_hostname(name):
+                """
+                Normalize hostnames to match both short and FQDN versions.
+                Example: 'srsdc402396w001' == 'srsdc402396w001.next.loc'
+                """
+                name = str(name).strip().lower()
+                if '.' in name:
+                    name = name.split('.')[0]  # keep only short name
+                return name
+
+            sheet1['normalized'] = sheet1['Server'].apply(normalize_hostname)
+            results['normalized'] = results[results_key_col].apply(normalize_hostname)
 
             # =========================================================
             # 🔄 Merge and Match Data
@@ -166,5 +178,6 @@ if uploaded_file:
 
     except Exception as e:
         st.error(f"⚠️ Error processing file: {e}")
+
 else:
     st.info("📥 Please upload an Excel file to start the analysis.")

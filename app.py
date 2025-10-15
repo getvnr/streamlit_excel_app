@@ -1,12 +1,41 @@
 import streamlit as st
 import pandas as pd
-from io import BytesIO
 import plotly.express as px
+from io import BytesIO
 
-st.set_page_config(page_title="Server Update Dashboard", layout="wide")
-st.title("📘 Excel Server Update Dashboard")
+# --- Page Config ---
+st.set_page_config(page_title="Automation Excel Comparator", layout="wide")
 
-uploaded_file = st.file_uploader("📤 Upload Excel File", type=["xlsx", "xls"])
+# --- Custom CSS (Automation Look) ---
+st.markdown("""
+    <style>
+    body {
+        background: linear-gradient(120deg, #0f2027, #203a43, #2c5364);
+        color: #fff !important;
+    }
+    .stApp {
+        background: radial-gradient(circle at top left, #203a43, #0f2027);
+    }
+    h1, h2, h3, h4 {
+        color: #00c3ff !important;
+        text-shadow: 0px 0px 8px rgba(0,195,255,0.5);
+    }
+    .block-container {
+        padding-top: 2rem;
+    }
+    div[data-testid="stDataFrame"] {
+        border: 2px solid #00c3ff;
+        border-radius: 10px;
+        box-shadow: 0px 0px 20px rgba(0,195,255,0.2);
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# --- App Title ---
+st.title("🤖 Excel Automation Comparator — Match & Visualize Server Updates")
+
+# --- File Upload ---
+uploaded_file = st.file_uploader("📂 Upload Excel file", type=["xlsx", "xls"])
 
 if uploaded_file:
     try:
@@ -16,90 +45,94 @@ if uploaded_file:
         if 'Sheet1' not in xls.sheet_names or 'Results' not in xls.sheet_names:
             st.error("❌ Excel must contain 'Sheet1' and 'Results' sheets.")
         else:
-            # Read sheets
-            sheet1 = pd.read_excel(xls, sheet_name='Sheet1')
+            # ✅ Read both sheets WITHOUT treating the first row as a header for Sheet1
+            sheet1 = pd.read_excel(xls, sheet_name='Sheet1', header=None)
             results = pd.read_excel(xls, sheet_name='Results')
 
-            # Define key columns
-            sheet1_key_col = sheet1.columns[0]
-            sheet1_value_col = sheet1.columns[1]
-            results_key_col = results.columns[0]
-            solution_col = "Solution Name"  # Adjust if needed
+            # Assume first two columns are key and change number
+            sheet1.columns = ['Server', 'ChangeNumber']  # manual columns
+            sheet1 = sheet1.dropna(subset=['Server'])  # remove empty rows
 
-            # Normalize names
-            sheet1['normalized'] = sheet1[sheet1_key_col].astype(str).str.strip().str.lower()
+            results_key_col = results.columns[0]
+            solution_col = "Solution Name" if "Solution Name" in results.columns else results.columns[1]
+
+            # Normalize
+            sheet1['normalized'] = sheet1['Server'].astype(str).str.strip().str.lower()
             results['normalized'] = results[results_key_col].astype(str).str.strip().str.lower()
 
-            # Merge and map change number
+            # Merge
             updated_results = results.merge(
-                sheet1[['normalized', sheet1_value_col]],
+                sheet1[['normalized', 'ChangeNumber']],
                 on='normalized',
                 how='left'
-            ).rename(columns={sheet1_value_col: "UpdatedValue"})
+            ).rename(columns={'ChangeNumber': 'UpdatedValue'})
 
             updated_results['UpdatedValue'] = updated_results['UpdatedValue'].fillna("Not Found")
             matched_servers = updated_results[updated_results['UpdatedValue'] != "Not Found"]
-            unmatched_servers = updated_results[updated_results['UpdatedValue'] == "Not Found"]
 
-            # --- Summary counts ---
-            total_servers = results[results_key_col].nunique()
-            matched_count = matched_servers[results_key_col].nunique()
-            unmatched_count = unmatched_servers[results_key_col].nunique()
+            # --- Summary Metrics ---
+            total_servers = len(results)
+            matched_count = len(matched_servers)
+            unmatched_count = total_servers - matched_count
 
-            # Summary cards
-            c1, c2, c3 = st.columns(3)
-            c1.metric("🖥️ Total Servers", total_servers)
-            c2.metric("✅ Matched Servers", matched_count)
-            c3.metric("❌ Unmatched Servers", unmatched_count)
+            colA, colB, colC = st.columns(3)
+            colA.metric("🖥️ Total Servers", total_servers)
+            colB.metric("✅ Matched Servers", matched_count)
+            colC.metric("❌ Unmatched Servers", unmatched_count)
 
-            st.markdown("---")
-
-            st.subheader("📋 Matched Servers with Change Numbers")
+            # --- Show Matched Data ---
+            st.subheader("📊 Matched Servers with Updated Change Numbers")
             st.dataframe(matched_servers, use_container_width=True)
 
-            # --- Charts Section ---
-            st.markdown("### 📊 Server Distribution Overview")
+            # --- Visualization Section ---
+            st.subheader("📈 Visualization Dashboard")
 
             col1, col2 = st.columns(2)
 
-            # Chart 1: Solution Name vs Count (horizontal)
-            with col1:
-                if solution_col in matched_servers.columns:
-                    sol_count = matched_servers.groupby(solution_col)[results_key_col].nunique().sort_values(ascending=True)
+            # Horizontal bar: Server count per Solution Name
+            if solution_col in matched_servers.columns:
+                with col1:
+                    soln_chart = matched_servers.groupby(solution_col)[results_key_col].nunique().reset_index()
+                    soln_chart = soln_chart.rename(columns={results_key_col: "Server Count"})
                     fig1 = px.bar(
-                        sol_count,
-                        x=sol_count.values,
-                        y=sol_count.index,
+                        soln_chart,
+                        x="Server Count",
+                        y=solution_col,
                         orientation='h',
-                        title="Server Count per Solution Name",
-                        labels={'x': 'Number of Servers', 'y': 'Solution Name'},
-                        text=sol_count.values
+                        color="Server Count",
+                        color_continuous_scale="tealgrn",
+                        title="Solution-wise Server Distribution"
                     )
-                    fig1.update_traces(textposition='outside')
+                    fig1.update_layout(
+                        template="plotly_dark",
+                        title_font_color="#00c3ff",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        paper_bgcolor="rgba(0,0,0,0)"
+                    )
                     st.plotly_chart(fig1, use_container_width=True)
 
-            # Chart 2: Change Number vs Count (horizontal)
+            # Horizontal bar: Change Number vs Server Count
             with col2:
-                chg_count = matched_servers.groupby("UpdatedValue")[results_key_col].nunique().sort_values(ascending=True)
+                change_chart = matched_servers.groupby("UpdatedValue")[results_key_col].nunique().reset_index()
+                change_chart = change_chart.rename(columns={results_key_col: "Server Count"})
                 fig2 = px.bar(
-                    chg_count,
-                    x=chg_count.values,
-                    y=chg_count.index,
+                    change_chart,
+                    x="Server Count",
+                    y="UpdatedValue",
                     orientation='h',
-                    title="Server Count per Change Number",
-                    labels={'x': 'Number of Servers', 'y': 'Change Number'},
-                    text=chg_count.values
+                    color="Server Count",
+                    color_continuous_scale="bluered",
+                    title="Change Number vs Server Count"
                 )
-                fig2.update_traces(textposition='outside')
+                fig2.update_layout(
+                    template="plotly_dark",
+                    title_font_color="#00c3ff",
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)"
+                )
                 st.plotly_chart(fig2, use_container_width=True)
 
-            st.markdown("---")
-
-            # --- Unmatched Section ---
-            with st.expander("🔍 View Unmatched Servers"):
-                st.dataframe(unmatched_servers[[results_key_col, "UpdatedValue"]], use_container_width=True)
-
-            # --- Excel with highlights ---
+            # --- Excel Output with Highlights ---
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
                 updated_results.to_excel(writer, sheet_name='Results', index=False)
@@ -117,7 +150,7 @@ if uploaded_file:
 
             output.seek(0)
             st.download_button(
-                label="📥 Download Excel with Highlights",
+                label="⬇️ Download Updated Excel with Highlights",
                 data=output,
                 file_name="matched_highlighted.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

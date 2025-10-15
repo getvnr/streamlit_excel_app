@@ -17,7 +17,7 @@ if uploaded_file:
         if 'Sheet1' not in xls.sheet_names or 'Results' not in xls.sheet_names:
             st.error("Excel must contain 'Sheet1' and 'Results' sheets.")
         else:
-            # --- Read Sheet1 without treating first row as header ---
+            # --- Read Sheet1 WITHOUT treating first row as header ---
             sheet1 = pd.read_excel(xls, sheet_name='Sheet1', header=None)
             results = pd.read_excel(xls, sheet_name='Results')
 
@@ -25,19 +25,20 @@ if uploaded_file:
             sheet1.columns = ['Server', 'ChangeNumber']
             sheet1 = sheet1.dropna(subset=['Server'])
 
-            # Normalize column names in Results
+            # Clean Results column names
             results.columns = results.columns.str.strip().str.replace('\n', ' ')
 
-            results_key_col = results.columns[0]  # First column assumed as server/host
+            # Identify key columns
+            results_key_col = results.columns[0]  # first column assumed as server/host
 
-            # Solution column: check if exists
+            # Optional: Solution Name column
             solution_col = None
             for col in ["Solution Name", "SolutionName", "Solution"]:
                 if col in results.columns:
                     solution_col = col
                     break
 
-            # Start Date column: optional
+            # Optional: Start Date column
             start_date_col = None
             for col in ["Start Date", "StartDate"]:
                 if col in results.columns:
@@ -45,10 +46,10 @@ if uploaded_file:
                     break
 
             if start_date_col:
-                # convert to datetime if column exists
+                # Safe conversion to datetime
                 results[start_date_col] = pd.to_datetime(results[start_date_col], errors='coerce')
 
-            # Normalize for merge
+            # Normalize for merging
             sheet1['normalized'] = sheet1['Server'].astype(str).str.strip().str.lower()
             results['normalized'] = results[results_key_col].astype(str).str.strip().str.lower()
 
@@ -61,7 +62,7 @@ if uploaded_file:
 
             updated_results['UpdatedValue'] = updated_results['UpdatedValue'].fillna("Not Found")
 
-            # --- Matched / Unmatched ---
+            # Matched / Unmatched servers
             matched_servers = updated_results[updated_results['UpdatedValue'] != "Not Found"]
             unmatched_servers = updated_results[updated_results['UpdatedValue'] == "Not Found"]
 
@@ -83,7 +84,7 @@ if uploaded_file:
             st.subheader("Visualizations")
             colA, colB = st.columns(2)
 
-            # Horizontal bar: Solution Name vs Server Count
+            # Chart: Solution Name vs Server Count
             if solution_col and solution_col in matched_servers.columns:
                 with colA:
                     sol_count = matched_servers.groupby(solution_col)[results_key_col].nunique().reset_index()
@@ -97,7 +98,7 @@ if uploaded_file:
                     )
                     st.plotly_chart(fig1, use_container_width=True)
 
-            # Horizontal bar: Change Number vs Server Count
+            # Chart: Change Number vs Server Count
             with colB:
                 if "UpdatedValue" in matched_servers.columns:
                     chg_count = matched_servers.groupby("UpdatedValue")[results_key_col].nunique().reset_index()
@@ -125,7 +126,7 @@ if uploaded_file:
                 worksheet = writer.sheets['Results']
                 yellow_format = workbook.add_format({'bg_color': '#FFFF00'})
 
-                # Highlight non-FQDN servers (no dot)
+                # Highlight non-FQDN servers
                 for row_num, server in enumerate(updated_results[results_key_col], start=1):
                     if '.' not in str(server):
                         col_idx = updated_results.columns.get_loc(results_key_col)

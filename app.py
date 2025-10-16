@@ -45,13 +45,9 @@ if uploaded_file:
             # 🧹 Normalize Hostnames for Matching
             # =========================================================
             def normalize_hostname(name):
-                """
-                Normalize hostnames to match both short and FQDN versions.
-                Example: 'srsdc402396w001' == 'srsdc402396w001.next.loc'
-                """
                 name = str(name).strip().lower()
                 if '.' in name:
-                    name = name.split('.')[0]  # keep only short name
+                    name = name.split('.')[0]
                 return name
 
             sheet1['normalized'] = sheet1['Server'].apply(normalize_hostname)
@@ -72,7 +68,19 @@ if uploaded_file:
             updated_results['UpdatedValue'] = updated_results['UpdatedValue'].fillna("Not Found")
 
             # Filter matched results
-            matched_servers = updated_results[updated_results['UpdatedValue'] != "Not Found"]
+            matched_servers = updated_results[updated_results['UpdatedValue'] != "Not Found"].copy()
+
+            # =========================================================
+            # 🧾 Create 'Matched Servers' Sheet Data
+            # =========================================================
+            matched_servers_sheet = pd.DataFrame(columns=[
+                "CHG", "System Name", "Start Time", "End Time", "Before", "After", "Status"
+            ])
+
+            # Fill the new sheet using relevant data
+            matched_servers_sheet["CHG"] = matched_servers["UpdatedValue"]
+            matched_servers_sheet["System Name"] = matched_servers[results_key_col]
+            # Leave Start/End/Before/After/Status empty for user input or later updates
 
             # =========================================================
             # 📊 Summary Metrics
@@ -94,7 +102,7 @@ if uploaded_file:
             # =========================================================
             st.markdown("---")
             st.subheader("✅ Matched Servers")
-            st.dataframe(matched_servers, use_container_width=True)
+            st.dataframe(matched_servers_sheet, use_container_width=True)
 
             # =========================================================
             # 📉 Visualization Section
@@ -146,21 +154,23 @@ if uploaded_file:
                 st.plotly_chart(fig2, use_container_width=True)
 
             # =========================================================
-            # 📘 Export to Excel (with Highlights)
+            # 📘 Export to Excel (with Matched Servers)
             # =========================================================
             st.markdown("---")
             st.subheader("📤 Export Matched Results")
 
             output = BytesIO()
             with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                updated_results.to_excel(writer, sheet_name='Results', index=False)
+                # Write all relevant sheets
                 sheet1.to_excel(writer, sheet_name='Sheet1', index=False)
+                updated_results.to_excel(writer, sheet_name='Results', index=False)
+                matched_servers_sheet.to_excel(writer, sheet_name='Matched Servers', index=False)
 
+                # Highlight format
                 workbook = writer.book
                 worksheet = writer.sheets['Results']
                 yellow_format = workbook.add_format({'bg_color': '#FFF59D'})  # Soft yellow
 
-                # Highlight non-FQDN servers (no '.' in hostname)
                 for row_num, server in enumerate(updated_results[results_key_col], start=1):
                     if '.' not in str(server):
                         col_idx = updated_results.columns.get_loc(results_key_col)
@@ -168,7 +178,7 @@ if uploaded_file:
 
             output.seek(0)
             st.download_button(
-                label="⬇️ Download Excel with Highlights",
+                label="⬇️ Download Excel with Matched Servers",
                 data=output,
                 file_name="matched_highlighted.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"

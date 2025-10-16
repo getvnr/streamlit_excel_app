@@ -73,14 +73,33 @@ if uploaded_file:
             # =========================================================
             # 🧾 Create 'Matched Servers' Sheet Data
             # =========================================================
-            matched_servers_sheet = pd.DataFrame(columns=[
+            # Define fixed headers
+            fixed_headers = [
                 "CHG", "System Name", "Start Time", "End Time", "Before", "After", "Status"
-            ])
+            ]
 
-            # Fill the new sheet using relevant data
+            # Dynamic headers — pick columns from Results in the given order if they exist
+            results_headers = [
+                "System Name", "Solution Name", "Instance Name", "Delivery Instance Owner", "Business Name",
+                "Instance Status", "Instance Service Level", "Instance Environment", "Sub Business Name",
+                "DC Name", "DC Country", "KPE Name", "KPE Short Name", "Software/Firmware Version",
+                "Environment", "Impact", "OS Class", "OS Version", "Usage", "Detailed Usage",
+                "IP Type", "IP Address"
+            ]
+
+            available_result_columns = [col for col in results_headers if col in matched_servers.columns]
+            all_headers = fixed_headers + available_result_columns
+
+            # Build final DataFrame
+            matched_servers_sheet = pd.DataFrame(columns=all_headers)
+
+            # Fill the initial columns
             matched_servers_sheet["CHG"] = matched_servers["UpdatedValue"]
             matched_servers_sheet["System Name"] = matched_servers[results_key_col]
-            # Leave Start/End/Before/After/Status empty for user input or later updates
+
+            # Copy available columns from results
+            for col in available_result_columns:
+                matched_servers_sheet[col] = matched_servers.get(col, "")
 
             # =========================================================
             # 📊 Summary Metrics
@@ -101,7 +120,7 @@ if uploaded_file:
             # 🧾 Matched Servers Table
             # =========================================================
             st.markdown("---")
-            st.subheader("✅ Matched Servers")
+            st.subheader("✅ Matched Servers (Detailed)")
             st.dataframe(matched_servers_sheet, use_container_width=True)
 
             # =========================================================
@@ -166,7 +185,7 @@ if uploaded_file:
                 updated_results.to_excel(writer, sheet_name='Results', index=False)
                 matched_servers_sheet.to_excel(writer, sheet_name='Matched Servers', index=False)
 
-                # Highlight format
+                # Highlight non-FQDN servers in Results
                 workbook = writer.book
                 worksheet = writer.sheets['Results']
                 yellow_format = workbook.add_format({'bg_color': '#FFF59D'})  # Soft yellow

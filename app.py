@@ -87,6 +87,9 @@ if uploaded_file:
                 "IP Type", "IP Address"
             ]
 
+            # Exclude duplicates (System Name appears in both)
+            results_headers = [col for col in results_headers if col not in fixed_headers]
+
             available_result_columns = [col for col in results_headers if col in matched_servers.columns]
             all_headers = fixed_headers + available_result_columns
 
